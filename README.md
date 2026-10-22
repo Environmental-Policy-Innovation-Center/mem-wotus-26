@@ -13,7 +13,7 @@ To achieve these goals, we aim to answer the following questions:
 
 We plan to conduct a literature review to identify the USACE uses when evaluating cumulative impacts associated with wetland permits. These findings will guide the development of a public-facing dashboard that reports these metrics and is updated annually. As we research, build, and test this dashboard, we will document any gaps in available information, analytical methods, or data transparency into a formal comment letter to USACE recommending improvements to their next RIA cycle. USACE’s ORM2 regulatory database (2021 to 2025) and supplemental spatial datasets will be used to analyze the different types of permits involved and their cumulative impacts to visualize potential geographic hotpots at both state and watershed scales. North Carolina will serve as a pilot state due to its regulatory alignment with federal standards. Furthermore, the project team has already established working relationships with key project contributors in the state. Code updates will be posted on a shared GitHub project repository (https://dukememmpcwadataviz.slack.com/team) and written work will be published on a secured Google Drive folder named 2026 Duke MEM WOTUS Project for client feedback.
 
-# Collaborators
+## Collaborators
 - Elizabeth Miles-Flynn, Masters of Environmental Management Candidate;  Duke University Nicholas School of the Environment
 - Madison Glenn, Masters of Environmental Management Candidate;  Duke University Nicholas School of the Environment
 - John Fay, Lecturing Fellow in the Division of Environmental Natural Sciences; Duke University Nicholas School of the Environment
