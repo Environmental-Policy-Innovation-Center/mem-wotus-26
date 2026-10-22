@@ -1,0 +1,211 @@
+---
+title: "mem-wotus-26-code"
+author: "Elizabeth Miles-Flynn"
+date: "2026-10-22"
+output: html_document
+---
+
+## Data Exploration
+
+```{r Prepare workspace, error=F, warning=F}
+# install.packages("lubridate")
+# install.packages("tidyverse")
+library(tidyverse);library(here);
+library(sf);library(mapview);library(leaflet)
+
+# install.packages('arcgis', repos = c('https://r-arcgis.r-universe.dev', 'https://cloud.r-project.org'))
+# install.packages("usethis")
+library(arcgis)
+
+sf::sf_use_s2(FALSE)
+
+# Set working directory
+setwd("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz")
+getwd()
+here()
+
+```
+
+## Data Cleaning
+
+```{r Data Cleaning, error=F, warning=F}
+# Read in permit locations (CSV to dataframe)
+# NOTE: set the working directory to a local folder with the "clean1625_Wilmington.csv" with your personal drive (due to large file size with 75245 observations and 106 variable attributes)
+clean_orm_Wilmington <- read.csv("./clean1625_Wilmington.csv")
+
+clean_orm_Wilmington$action_type <- as.factor(clean_orm_Wilmington$action_type)
+
+# Display the structure of the dataframe
+str(clean_orm_Wilmington)
+class(clean_orm_Wilmington$action_type)
+
+# Convert the dataframe to an sf dataframe.
+sum(is.na(clean_orm_Wilmington$proj_longitude))
+sum(is.na(clean_orm_Wilmington$proj_latitude))
+
+Wilmington_sf <- clean_orm_Wilmington %>%
+  filter(!is.na(proj_longitude),
+         !is.na(proj_latitude)) %>%
+  st_as_sf(
+    coords = c("proj_longitude", "proj_latitude"),
+    crs = 4269
+  )
+
+# Display the structure
+str(Wilmington_sf)
+
+Wilmington_sf_RIA_Period <- Wilmington_sf %>%
+  mutate(
+    federally_complete_date = as.Date(
+      federally_complete_date,
+      format = "%d-%b-%y"
+    )
+  ) %>%
+  filter(
+    !is.na(federally_complete_date),
+    federally_complete_date >= as.Date("2021-01-01")
+  )
+
+# NOTE: NC County Boundary found under repository "Data" folder
+NC <- vect("NC_County_Boundary/County_Boundary.shp")
+NC_new <- project(NC, crs(Wilmington_sf))
+NC_new <- st_as_sf(NC_new)
+```
+
+## Spatial Analysis
+
+```{r Plotting Data, error=F, warning=F}
+## Plot permits by action type
+ggplot() +
+  geom_sf(
+    data = NC_new,
+    fill = "blue",
+    color = "white",
+    alpha = 0.75,
+    show.legend = FALSE
+  ) +
+  geom_sf(
+    data = Wilmington_sf_RIA_Period,
+    aes(color = action_type),
+    size = 0.5
+  ) +
+  labs(
+    title = "CWA Section 404 Permit Locations by Action Type in North Carolina from the Last RIA Period (1/4/2021-9/30/2025)",
+    subtitle = "Created by Elizabeth Miles-Flynn",
+    color = "Action Type"
+  ) +
+  theme_minimal()
+
+## Plot auth_fill_acres by size
+Wilmington_sf_RIA_Period_fill <- Wilmington_sf_RIA_Period %>%
+  filter(
+    !is.na(auth_fill_acres),
+    auth_fill_acres > 0
+  )
+
+# Convert both layers to WGS84
+Wilmington_sf_leaflet <- st_transform(
+  Wilmington_sf_RIA_Period_fill,
+  4326
+)
+
+NC_leaflet <- st_transform(
+  NC_new,
+  4326
+)
+
+# Create palette
+pal <- colorBin(
+  palette = "YlOrRd",
+  domain = Wilmington_sf_leaflet$auth_fill_acres,
+  bins = c(
+    0,
+    0.1,
+    0.5,
+    1,
+    2,
+    5,
+    10,
+    25,
+    50,
+    100,
+    200
+  ),
+  pretty = FALSE
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    data = NC_leaflet,
+    fillColor = "blue",
+    fillOpacity = 0.3,
+    color = "white",
+    weight = 1
+  ) %>%
+  addCircleMarkers(
+    data = Wilmington_sf_leaflet,
+    radius = 1,
+    fillColor = ~pal(auth_fill_acres),
+    fillOpacity = 0.8,
+    stroke = FALSE,
+    popup = ~paste0(
+      "<b>Authorized Fill Acres:</b> ",
+      auth_fill_acres
+    )
+  ) %>%
+  addLegend(
+    "bottomright",
+    pal = pal,
+    values = Wilmington_sf_leaflet$auth_fill_acres,
+    title = "Authorized Fill Acres"
+  )
+
+
+## Plot auth_fill_acres by radius size
+pal2 <- colorBin(
+  palette = "YlOrBr",
+  domain = Wilmington_sf_leaflet$auth_fill_acres,
+  bins = c(
+    0, 0.1, 0.5, 1, 2, 5, 10, 25, 50, 100, 200
+  ),
+  pretty = FALSE
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_leaflet,
+    fillColor = "blue",
+    fillOpacity = 0.3,
+    color = "white",
+    weight = 1
+  ) %>%
+
+  addCircleMarkers(
+    data = Wilmington_sf_leaflet,
+
+    # Size represents acreage
+    radius = ~pmax(2, sqrt(auth_fill_acres)),
+
+    # Color represents acreage bins
+    fillColor = ~pal2(auth_fill_acres),
+    color = ~pal2(auth_fill_acres),
+
+    fillOpacity = 0.5,
+    weight = 1,
+
+    popup = ~paste0(
+      "<b>Authorized Fill Acres:</b> ", round(auth_fill_acres, 2),
+      "<br><b>Action Type:</b> ", action_type,
+      "<br><b>Date:</b> ", federally_complete_date
+    )
+  ) %>%
+  
+addLegend(
+  position = "bottomright",
+  pal = pal2,
+  values = Wilmington_sf_leaflet$auth_fill_acres,
+  title = "Authorized Fill Acres"
+)
