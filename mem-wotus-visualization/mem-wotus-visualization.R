@@ -1,5 +1,7 @@
 library(shiny)
 library(leaflet)
+library(tidyverse)
+library(gt)
 library(sf)
 library(dplyr)
 
@@ -7,6 +9,67 @@ library(dplyr)
 # DATA PREPARATION
 # =====================================================
 
+# -------------------------
+# Initial Step: Load Data
+# -------------------------
+
+# Check working directory
+#setwd()
+getwd()
+
+# Load CSV file from personal desktop folder into R
+clean_orm_Wilmington <- read.csv("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz/clean1625_Wilmington.csv")
+
+# Filter for last RIA period (2021-2025) to reflect updates from ORM SOP 2021
+NC_post_2021 <- clean_orm_Wilmington %>%
+  filter(fiscal_year %in% c(2021, 2022, 2023, 2024, 2025))
+
+# Filter more columns
+NC_post2021 <- NC_post_2021 %>%
+  select(
+    da_number,
+    action,
+    action_type,
+    permit_authority,
+    compensatory_mitigation_rqd,
+    mitigation_permittee_rsp,
+    end_date,
+    federally_complete_date,
+    proj_latitude,
+    proj_longitude,
+    impact_duration,
+    impact_perm_loss,
+    impact_type,
+    waters_latitude,
+    waters_longitude,
+    auth_fill_acres,
+    auth_struc_acres,
+    auth_drg_fill_acres,
+    auth_drg_remvl_acres,
+    mit_req_acres,
+    fiscal_year
+  )
+
+NC_proj <- NC_post2021 %>%
+  filter(!is.na(proj_longitude),
+         !is.na(proj_latitude)) %>%
+  st_as_sf(
+    coords = c("proj_longitude", "proj_latitude"),
+    crs = 4269
+  )
+
+# NOTE: found under repository "Data" folder
+NC_county <- vect("Data/NC_County_Boundary/County_Boundary.shp")
+NC_county <- project(NC_county, crs(NC_waters))
+NC_county <- st_as_sf(NC_county)
+
+NC_HUC8 <- vect("Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
+NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
+NC_HUC8 <- st_as_sf(NC_HUC8)
+
+# Convert both layers to WGS84
+NC_proj <- st_transform(NC_proj, 4326)
+NC_HUC8 <- st_transform(NC_HUC8, 4326)
 # -------------------------
 # TAB 1: Watershed Summary
 # -------------------------
