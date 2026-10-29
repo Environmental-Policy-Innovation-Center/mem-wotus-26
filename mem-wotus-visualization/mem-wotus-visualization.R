@@ -70,6 +70,7 @@ NC_HUC8 <- st_as_sf(NC_HUC8)
 # Convert both layers to WGS84
 NC_proj <- st_transform(NC_proj, 4326)
 NC_HUC8 <- st_transform(NC_HUC8, 4326)
+
 # -------------------------
 # TAB 1: Watershed Summary
 # -------------------------
@@ -273,7 +274,7 @@ server <- function(input, output) {
       ) %>%
       
       addLegend(
-        position = "bottomright",
+        position = "topright",
         pal = pal_huc8,
         values = ~n_projects,
         title = "Unique DA Numbers"
@@ -407,7 +408,7 @@ server <- function(input, output) {
       ) %>%
       
       addLegend(
-        position = "bottomright",
+        position = "topright",
         pal = pal_acres,
         values = all_acres,
         title = "Acres"
@@ -624,7 +625,7 @@ server <- function(input, output) {
       ) %>%
       
       addLegend(
-        position = "bottomright",
+        position = "topright",
         pal = pal_action,
         values = NC_proj$action_type,
         title = "Action Type"
