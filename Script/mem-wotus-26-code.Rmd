@@ -1,49 +1,248 @@
 ---
 title: "mem-wotus-26-code"
 author: "Elizabeth Miles-Flynn"
-date: "2026-10-22"
+date: "2026-10-29"
 output: html_document
 ---
 
-## Data Exploration
+# Data Exploration
 
-```{r Prepare workspace, error=F, warning=F}
+## Read in permit locations (CSV to dataframe)
+
+NOTE: set the working directory to a local folder with the "clean1625_Wilmington.csv" with your personal drive (due to large file size with 75245 observations and 106 variable attributes)
+```{r Load required libraries, error=F, warning=F}
 # install.packages("lubridate")
 # install.packages("tidyverse")
-library(tidyverse);library(here);
+# install.packages("shiny")
+# install.packages("gt")
+library(tidyverse);library(here);library(gt)
 library(sf);library(mapview);library(leaflet)
 
-# install.packages('arcgis', repos = c('https://r-arcgis.r-universe.dev', 'https://cloud.r-project.org'))
-# install.packages("usethis")
-library(arcgis)
-
-sf::sf_use_s2(FALSE)
-
-# Set working directory
-setwd("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz")
+# Check working directory
+#setwd()
 getwd()
-here()
 
+# Load CSV file from personal desktop folder into R
+clean_orm_Wilmington <- read.csv("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz/clean1625_Wilmington.csv")
+
+# Filter for last RIA period (2021-2025) to reflect updates from ORM SOP 2021
+NC_post_2021 <- clean_orm_Wilmington %>%
+  filter(fiscal_year %in% c(2021, 2022, 2023, 2024, 2025))
 ```
 
-## Data Cleaning
+## Check id types and counts to determine best for analysis
+
+Notes from ORM Data Dictionary and ORM FOIA Data Caveats document
+- *action_folder_id* = Unique ID number (7 digits, ex: 1177355) for the Department of the Army folder number. Folder usually has multiple related permit actions. 
+
+- *action_id* = unique permits, but note that there may be multiple permits for an individual project - a project may use multiple NWPs, or a project gives a unique action_id for each water crossing for a pipeline for example. 
+
+- *impact_id* = Unique ID number (7 digits, ex: 1980514) that is associated with an impact. Impact and mitigation records are not linked 1:1.
+
+- *mitigation_id* = There can be multiple mitigation_id's associated with one action_id
+
+- *DA_number* = Best to use action_folder_id or da_number to count number of "projects". There will be multiple action_id's (and also potentially impact_id, mitigation_id) within one folder/DA#.
+```{r Select date column best for calculating permit timeframes, error=F, warning=F}
+# Check to see which dates to use for analysis
+id_counts <- NC_post_2021 %>%
+  group_by(fiscal_year) %>%
+  summarise(
+    action_folder_id = sum(!is.na(action_folder_id)),
+    action_id = sum(!is.na(action_id)),
+    impact_id = sum(!is.na(impact_id)),
+    mitigation_id = sum(!is.na(mitigation_id)),
+    da_number = sum(!is.na(da_number) & da_number != ""),
+    .groups = "drop"
+  ) %>%
+  rename(Fiscal_Year = fiscal_year)
+
+# no NA values
+id_counts %>%
+  gt() %>%
+  tab_header(
+    title = "Record Counts by Fiscal Year",
+    subtitle = "Wilmington ORM Data"
+  ) %>%
+  cols_label(
+    Fiscal_Year = "Fiscal Year",
+    action_folder_id = "Action Folder ID",
+    action_id = "Action ID",
+    impact_id = "Impact ID",
+    mitigation_id = "Mitigation ID",
+    da_number = "DA Number"
+  ) %>%
+  fmt_number(
+    columns = -Fiscal_Year,
+    decimals = 0
+  )
+
+id_counts
+# The number of permit actions is the same as the number of permit projects. Choose to use the da_number because it has a shorter column name and has the same number of permits as Action_folder_ID and DA_Number for all five fiscal years. 
+```
+
+## Check date types and counts to determine best for analysis
+
+Notes from ORM Data Dictionary and ORM FOIA Data Caveats document
+- *begin_date* = Do not use in calculating permit timelines - this is the date that the *action_id* was created (if I understand correctly), and this could be the date of a pre-application consultation, jurisdictional determination, etc. 
+
+- *permit_end_date* = Date USACE transmitted a permit decision. received stamped on the last piece of information needed to complete the Public Notice for an Individual Permit or to complete the application for a General Permit.
+
+- *federally_complete_date* = Use this in calculating permit timeframes - this is when the application is deemed complete and officially starts the clock on any processing deadlines. Date that a federally complete permit application/request was received by USACE.
+
+- *end_date* = permit action end date 
+
+- *recieved_date* = Do not use in calculating whether permit timelines are meeting deadlines for processing time. Could be used to indicate if there was a lot of back and forth requests before an application was deemed 'complete' by the Corps. 
+```{r Select date column best for calculating permit timeframes, error=F, warning=F}
+# Check to see which dates to use for analysis
+NC_post_2021 <- NC_post_2021 %>%
+  mutate(
+    begin_date = dmy(begin_date),
+    permit_end_date = dmy(permit_end_date),
+    federally_complete_date = dmy(federally_complete_date),
+    end_date = dmy(end_date),
+    received_date = dmy(received_date)
+  )
+
+#glimpse(NC_post_2021)
+#head(NC_post_2021$begin_date)
+
+date_counts <- NC_post_2021 %>%
+  group_by(fiscal_year) %>%
+  summarise(
+    begin_date = sum(!is.na(begin_date)),
+    permit_end_date = sum(!is.na(permit_end_date)),
+    federally_complete_date = sum(!is.na(federally_complete_date)),
+    end_date = sum(!is.na(end_date)),
+    received_date = sum(!is.na(received_date))
+  ) %>%
+  rename(Fiscal_Year = fiscal_year)
+
+date_counts %>%
+  gt() %>%
+  tab_header(
+    title = "Permit Counts by Fiscal Year",
+    subtitle = "Wilmington ORM Data"
+  ) %>%
+  cols_label(
+    Fiscal_Year = "Fiscal Year",
+    begin_date = "Begin Date",
+    permit_end_date = "Permit End Date",
+    federally_complete_date = "Federal Complete Date",
+    end_date = "End Date",
+    received_date = "Received Date"
+  )
+
+date_counts
+# Choose to use the end_date column for consistency due to complete data for all five years
+```
+
+## May want to filter if only interested in 404 permits
+
+Clean Water Act permit authority used in permit verification/issuance, for example: "Section 404", "Section 10/404", "Section 10", "Section 103", "Section 10/404/103" [combination of permits], "Section 10/103" [combination of permits], "Section 9", "Section 404/103" [combination of permits]  
+```{r Permit Authority Count, error = F, warning = F}
+NC_post_2021 %>%
+  count(permit_authority, sort = TRUE) %>%
+  ggplot(aes(x = reorder(permit_authority, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  geom_text(
+    aes(label = n),
+    hjust = -0.2,
+    size = 4
+  ) +
+  coord_flip() +
+  labs(
+    title = "Permit Authority Counts (FY2021-2025)",
+    x = "Permit Authority",
+    y = "Number of Permits"
+  ) +
+  theme_minimal() +
+  expand_limits(y = max(table(NC_post_2021$permit_authority)) * 1.1)
+```
+
+## Difference between action_id (unique permits) and da_number (unique projects)
+
+Notes whether the permittee is responsible for the long term mitigation monitoring of the mitigation site.
+- If want to know *# of unique permits* where permittee responsible mitigation was used (and NOT # of sub-actions like impact or impacts &/or mitigation all associated with the same permit), count the unique # of action_id rows where "mitigation_permittee_rsp" = "All" OR "Some". 
+Permit Actions: "How many permits required permittee mitigation?"
+
+- If you want to know *unique # of projects* (many projects like pipelines have multiple permits/action_id's), count unique action_folder_id or da_number where "mitigation_permittee_rsp" = "All" OR "Some". 
+Projects: "How many distinct development/infrastructure projects required permittee mitigation?"
+```{r Responsible mitigation permittee count, error = F, warning = F}
+mitigation_fy <- NC_post_2021 %>%
+  filter(mitigation_permittee_rsp %in% c("All", "Some")) %>%
+  distinct(fiscal_year, da_number, mitigation_permittee_rsp) %>% #Counts each DA number only once per fiscal year and mitigation category.
+  count(fiscal_year, mitigation_permittee_rsp) # Counts the number of unique DA numbers in each category.
+
+ggplot(
+  mitigation_fy,
+  aes(y = factor(fiscal_year),
+      x = n,
+      fill = mitigation_permittee_rsp)
+) +
+  geom_col() +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "white"
+  ) +
+  labs(
+    title = "Unique Action IDs by Mitigation Responsibility",
+    x = "Unique Action IDs",
+    y = "Fiscal Year",
+    fill = "Mitigation Responsibility"
+  ) +
+  theme_minimal()
+
+## No change in unique action_id nor da_number for mitigation responsibility
+```
+
+# Data Cleaning
 
 ```{r Data Cleaning, error=F, warning=F}
-# Read in permit locations (CSV to dataframe)
-# NOTE: set the working directory to a local folder with the "clean1625_Wilmington.csv" with your personal drive (due to large file size with 75245 observations and 106 variable attributes)
-clean_orm_Wilmington <- read.csv("./clean1625_Wilmington.csv")
+# Filter more columns
+NC_post2021 <- NC_post_2021 %>%
+  select(
+    da_number,
+    action,
+    action_type,
+    permit_authority,
+    compensatory_mitigation_rqd,
+    mitigation_permittee_rsp,
+    end_date,
+    federally_complete_date,
+    proj_latitude,
+    proj_longitude,
+    impact_duration,
+    impact_perm_loss,
+    impact_type,
+    waters_latitude,
+    waters_longitude,
+    auth_fill_acres,
+    auth_struc_acres,
+    auth_drg_fill_acres,
+    auth_drg_remvl_acres,
+    mit_req_acres,
+    fiscal_year
+  )
 
-clean_orm_Wilmington$action_type <- as.factor(clean_orm_Wilmington$action_type)
+# Action type
+NC_post2021$action_type <- as.factor(NC_post2021$action_type)
 
-# Display the structure of the dataframe
-str(clean_orm_Wilmington)
-class(clean_orm_Wilmington$action_type)
+# Display the structure of the dataframe (n = 42009 obs of 20 variables)
+str(NC_post2021)
+class(NC_post2021)
 
-# Convert the dataframe to an sf dataframe.
-sum(is.na(clean_orm_Wilmington$proj_longitude))
-sum(is.na(clean_orm_Wilmington$proj_latitude))
+# Convert the dataframe to an sf dataframe. Difference between proj and waters coordinates?
+sum(is.na(NC_post2021$proj_longitude))
+sum(is.na(NC_post2021$proj_latitude))
+# na values = 1
 
-Wilmington_sf <- clean_orm_Wilmington %>%
+sum(is.na(NC_post2021$waters_longitude))
+sum(is.na(NC_post2021$waters_latitude))
+# na values = 12780
+
+# Converts ORM dataframe into an sf (simple features) spatial object using the longitude and latitude coordinates.
+NC_proj <- NC_post2021 %>%
   filter(!is.na(proj_longitude),
          !is.na(proj_latitude)) %>%
   st_as_sf(
@@ -51,41 +250,41 @@ Wilmington_sf <- clean_orm_Wilmington %>%
     crs = 4269
   )
 
-# Display the structure
-str(Wilmington_sf)
-
-Wilmington_sf_RIA_Period <- Wilmington_sf %>%
-  mutate(
-    federally_complete_date = as.Date(
-      federally_complete_date,
-      format = "%d-%b-%y"
-    )
-  ) %>%
-  filter(
-    !is.na(federally_complete_date),
-    federally_complete_date >= as.Date("2021-01-01")
+NC_waters <- NC_post2021 %>%
+  filter(!is.na(waters_longitude),
+         !is.na(waters_latitude)) %>%
+  st_as_sf(
+    coords = c("waters_longitude", "waters_latitude"),
+    crs = 4269
   )
 
 # NOTE: NC County Boundary found under repository "Data" folder
-NC <- vect("NC_County_Boundary/County_Boundary.shp")
-NC_new <- project(NC, crs(Wilmington_sf))
-NC_new <- st_as_sf(NC_new)
+NC_county <- vect("Data/NC_County_Boundary/County_Boundary.shp")
+NC_county <- project(NC_county, crs(NC_waters))
+NC_county <- st_as_sf(NC_county)
+
+# NOTE: NC HUC8 Watershed Boundary found under repository "Data" folder
+NC_HUC8 <- vect("Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
+NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
+NC_HUC8 <- st_as_sf(NC_HUC8)
+
 ```
 
-## Spatial Analysis
+# Spatial Analysis
 
-```{r Plotting Data, error=F, warning=F}
-## Plot permits by action type
+## Plot permit point locations by action overlapping HUC8 boundaries
+
+```{r ggplot method, error=F, warning=F}
 ggplot() +
   geom_sf(
-    data = NC_new,
+    data = NC_HUC8,
     fill = "blue",
     color = "white",
     alpha = 0.75,
     show.legend = FALSE
   ) +
   geom_sf(
-    data = Wilmington_sf_RIA_Period,
+    data = NC_proj,
     aes(color = action_type),
     size = 0.5
   ) +
@@ -95,29 +294,68 @@ ggplot() +
     color = "Action Type"
   ) +
   theme_minimal()
+```
 
+```{r leaflet method, error=F, warning=F}
+# Convert both layers to WGS84
+NC_proj <- st_transform(NC_proj, 4326)
+NC_HUC8 <- st_transform(NC_HUC8, 4326)
+
+# Create palette
+pal <- colorFactor(
+  palette = "Set1",
+  domain = NC_proj$action_type
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
+    weight = 1
+  ) %>%
+
+  addCircleMarkers(
+    data = NC_proj,
+    color = ~pal(action_type),
+    radius = 1,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    popup = ~paste(
+      "<b>Action Type:</b>", action_type,
+      "<br><b>DA Number:</b>", da_number,
+      "<br><b>Fiscal Year:</b>", fiscal_year
+    )
+  ) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = NC_proj$action_type,
+    title = "Action Type"
+  )
+```
+
+## Plot permit authorized fill acres by point locations overlapping HUC8 boundaries
+
+```{r Point color changes by fill acres, error=F, warning=F}
 ## Plot auth_fill_acres by size
-Wilmington_sf_RIA_Period_fill <- Wilmington_sf_RIA_Period %>%
+NC_proj_fill <- NC_proj %>%
   filter(
     !is.na(auth_fill_acres),
     auth_fill_acres > 0
   )
 
 # Convert both layers to WGS84
-Wilmington_sf_leaflet <- st_transform(
-  Wilmington_sf_RIA_Period_fill,
-  4326
-)
-
-NC_leaflet <- st_transform(
-  NC_new,
-  4326
-)
+NC_proj_fill <- st_transform(NC_proj_fill,4326)
 
 # Create palette
 pal <- colorBin(
-  palette = "YlOrRd",
-  domain = Wilmington_sf_leaflet$auth_fill_acres,
+  palette = "RdYlGn",
+  domain = NC_proj_fill$auth_fill_acres,
   bins = c(
     0,
     0.1,
@@ -136,15 +374,17 @@ pal <- colorBin(
 
 leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
+
   addPolygons(
-    data = NC_leaflet,
-    fillColor = "blue",
-    fillOpacity = 0.3,
-    color = "white",
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
     weight = 1
   ) %>%
+  
   addCircleMarkers(
-    data = Wilmington_sf_leaflet,
+    data = NC_proj_fill,
     radius = 1,
     fillColor = ~pal(auth_fill_acres),
     fillOpacity = 0.8,
@@ -157,34 +397,46 @@ leaflet() %>%
   addLegend(
     "bottomright",
     pal = pal,
-    values = Wilmington_sf_leaflet$auth_fill_acres,
+    values = NC_proj_fill$auth_fill_acres,
     title = "Authorized Fill Acres"
   )
+```
 
 
+```{r Radius point changes by fill acres, error=F, warning=F}
 ## Plot auth_fill_acres by radius size
 pal2 <- colorBin(
-  palette = "YlOrBr",
-  domain = Wilmington_sf_leaflet$auth_fill_acres,
-  bins = c(
-    0, 0.1, 0.5, 1, 2, 5, 10, 25, 50, 100, 200
-  ),
+  palette = "viridis",
+  domain = NC_proj_fill$auth_fill_acres,
+   bins = c(
+    0,
+    0.1,
+    0.5,
+    1,
+    2,
+    5,
+    10,
+    25,
+    50,
+    100,
+    200),
+  reverse = TRUE,
   pretty = FALSE
 )
 
 leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
 
-  addPolygons(
-    data = NC_leaflet,
-    fillColor = "blue",
-    fillOpacity = 0.3,
-    color = "white",
+ addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
     weight = 1
   ) %>%
 
   addCircleMarkers(
-    data = Wilmington_sf_leaflet,
+    data = NC_proj_fill,
 
     # Size represents acreage
     radius = ~pmax(2, sqrt(auth_fill_acres)),
@@ -206,6 +458,192 @@ leaflet() %>%
 addLegend(
   position = "bottomright",
   pal = pal2,
-  values = Wilmington_sf_leaflet$auth_fill_acres,
+  values = NC_proj_fill$auth_fill_acres,
   title = "Authorized Fill Acres"
 )
+```
+
+```{r Radius point changes by fill acres COMBINED, error=F, warning=F}
+# Clean datasets
+acre_bins <- c(
+  0, 0.1, 0.5, 1, 2,
+  5, 10, 25, 50, 100, 200, Inf
+)
+
+all_acres <- c(
+  NC_proj$auth_fill_acres,
+  NC_proj$auth_struc_acres,
+  NC_proj$auth_drg_fill_acres,
+  NC_proj$auth_drg_remvl_acres,
+  NC_proj$mit_req_acres
+)
+
+all_acres <- all_acres[
+  !is.na(all_acres) &
+  all_acres > 0
+]
+
+pal <- colorBin(
+  palette = "viridis",
+  domain = all_acres,
+  bins = acre_bins,
+  reverse = TRUE,
+  pretty = FALSE
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
+    weight = 1,
+    group = "HUC8 Boundaries"
+  ) %>%
+
+  # Authorized Fill Acres
+  addCircleMarkers(
+    data = NC_proj %>% filter(!is.na(auth_fill_acres), auth_fill_acres > 0),
+    radius = ~pmax(2, sqrt(auth_fill_acres)),
+    fillColor = ~pal(auth_fill_acres),
+    color = ~pal(auth_fill_acres),
+    fillOpacity = 0.5,
+    weight = 1,
+    group = "Authorized Fill Acres",
+    popup = ~paste0(
+      "<b>Authorized Fill Acres:</b> ", round(auth_fill_acres, 2),
+      "<br><b>DA Number:</b> ", da_number
+    )
+  ) %>%
+
+  # Authorized Structure Acres
+  addCircleMarkers(
+    data = NC_proj %>% filter(!is.na(auth_struc_acres), auth_struc_acres > 0),
+    radius = ~pmax(2, sqrt(auth_struc_acres)),
+    fillColor = ~pal(auth_struc_acres),
+    color = ~pal(auth_struc_acres),
+    fillOpacity = 0.5,
+    weight = 1,
+    group = "Authorized Structure Acres",
+    popup = ~paste0(
+      "<b>Authorized Structure Acres:</b> ",
+      round(auth_struc_acres, 2)
+    )
+  ) %>%
+
+  # Authorized Dredge Fill Acres
+  addCircleMarkers(
+    data = NC_proj %>% filter(!is.na(auth_drg_fill_acres),
+                              auth_drg_fill_acres > 0),
+    radius = ~pmax(2, sqrt(auth_drg_fill_acres)),
+    fillColor = ~pal(auth_drg_fill_acres),
+    color = ~pal(auth_drg_fill_acres),
+    fillOpacity = 0.5,
+    weight = 1,
+    group = "Authorized Dredge Fill Acres"
+  ) %>%
+
+  # Authorized Dredge Removal Acres
+  addCircleMarkers(
+    data = NC_proj %>% filter(!is.na(auth_drg_remvl_acres),
+                              auth_drg_remvl_acres > 0),
+    radius = ~pmax(2, sqrt(auth_drg_remvl_acres)),
+    fillColor = ~pal(auth_drg_remvl_acres),
+    color = ~pal(auth_drg_remvl_acres),
+    fillOpacity = 0.5,
+    weight = 1,
+    group = "Authorized Dredge Removal Acres"
+  ) %>%
+
+  # Mitigation Required Acres
+  addCircleMarkers(
+    data = NC_proj %>% filter(!is.na(mit_req_acres),
+                              mit_req_acres > 0),
+    radius = ~pmax(2, sqrt(mit_req_acres)),
+    fillColor = ~pal(mit_req_acres),
+    color = ~pal(mit_req_acres),
+    fillOpacity = 0.5,
+    weight = 1,
+    group = "Mitigation Required Acres"
+  ) %>%
+
+  addLayersControl(
+    overlayGroups = c(
+      "HUC8 Boundaries",
+      "Authorized Fill Acres",
+      "Authorized Structure Acres",
+      "Authorized Dredge Fill Acres",
+      "Authorized Dredge Removal Acres",
+      "Mitigation Required Acres"
+    ),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+
+  hideGroup(c(
+    "Authorized Structure Acres",
+    "Authorized Dredge Fill Acres",
+    "Authorized Dredge Removal Acres",
+    "Mitigation Required Acres"
+  )) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = all_acres,
+    title = "Acres"
+  )
+```
+
+## Plot total unique DA numbers per HUC8 watershed
+``` {r spatial join, error=F, warning=F}
+# Join permits to HUC8 polygons
+permits_huc8 <- st_join(
+  NC_proj,
+  NC_HUC8,
+  left = FALSE
+)
+
+# Count unique projects (DA numbers) per HUC8
+huc8_counts <- permits_huc8 %>%
+  st_drop_geometry() %>%
+  group_by(HUC_8) %>%
+  summarise(
+    n_projects = n_distinct(da_number),
+    .groups = "drop"
+  )
+
+# Join counts back to HUC8 layer
+NC_HUC8_map <- NC_HUC8 %>%
+  left_join(huc8_counts, by = "HUC_8")
+
+NC_HUC8_map$n_projects[is.na(NC_HUC8_map$n_projects)] <- 0
+
+# Create color palette
+pal <- colorNumeric(
+  palette = "YlOrRd",
+  domain = NC_HUC8_map$n_projects
+)
+
+leaflet(NC_HUC8_map) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    fillColor = ~pal(n_projects),
+    fillOpacity = 0.8,
+    color = "black",
+    weight = 1,
+    popup = ~paste(
+      "<b>HUC8:</b>", HUC_8,
+      "<br><b>Unique Projects:</b>", n_projects
+    )
+  ) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = ~n_projects,
+    title = "Unique DA Numbers"
+  )
+```
