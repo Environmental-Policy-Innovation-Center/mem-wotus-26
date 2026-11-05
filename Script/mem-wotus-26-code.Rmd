@@ -5,6 +5,10 @@ date: "2026-10-29"
 output: html_document
 ---
 
+```{r chunk_0.2_wd, include=F}
+rm(list=ls())
+```
+
 # Data Exploration
 
 ## Read in permit locations (CSV to dataframe)
@@ -15,15 +19,15 @@ NOTE: set the working directory to a local folder with the "clean1625_Wilmington
 # install.packages("tidyverse")
 # install.packages("shiny")
 # install.packages("gt")
-library(tidyverse);library(here);library(gt)
+library(tidyverse);library(here);library(gt);library(terra)
 library(sf);library(mapview);library(leaflet)
 
 # Check working directory
-#setwd()
+setwd("D:/MP_Files")
 getwd()
 
 # Load CSV file from personal desktop folder into R
-clean_orm_Wilmington <- read.csv("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz/clean1625_Wilmington.csv")
+clean_orm_Wilmington <- read.csv("clean1625_Wilmington.csv")
 
 # Filter for last RIA period (2021-2025) to reflect updates from ORM SOP 2021
 NC_post_2021 <- clean_orm_Wilmington %>%
@@ -222,7 +226,8 @@ NC_post2021 <- NC_post_2021 %>%
     auth_drg_fill_acres,
     auth_drg_remvl_acres,
     mit_req_acres,
-    fiscal_year
+    fiscal_year,
+    pnn
   )
 
 # Action type
@@ -259,12 +264,12 @@ NC_waters <- NC_post2021 %>%
   )
 
 # NOTE: NC County Boundary found under repository "Data" folder
-NC_county <- vect("Data/NC_County_Boundary/County_Boundary.shp")
+NC_county <- vect("D:/MP_Files/mem-wotus-26/Data/NC_County_Boundary/County_Boundary.shp")
 NC_county <- project(NC_county, crs(NC_waters))
 NC_county <- st_as_sf(NC_county)
 
 # NOTE: NC HUC8 Watershed Boundary found under repository "Data" folder
-NC_HUC8 <- vect("Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
+NC_HUC8 <- vect("D:/MP_Files/mem-wotus-26/Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
 NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
 NC_HUC8 <- st_as_sf(NC_HUC8)
 
@@ -338,6 +343,105 @@ leaflet() %>%
     title = "Action Type"
   )
 ```
+
+##Plot NWP permit points by location, showing permit number (MG) 
+
+```{r ggplot method_MG, error=F, warning=F}
+NC_proj_NWP <- NC_proj %>%  #Drop GP permits to only include NWPs
+  filter(grepl("NWP", pnn))
+
+ggplot() +
+  geom_sf(
+    data = NC_HUC8,
+    fill = "tan",
+    color = "white",
+    alpha = 0.75,
+    show.legend = FALSE
+  ) +
+  geom_sf(
+    data = NC_proj_NWP,
+    aes(color = pnn),
+    size = 0.5
+  ) +
+  labs(
+    title = "CWA Section 404 NC NWP Locations by Permit #",
+    subtitle = "Last RIA Period (1/4/2021-9/30/2025)\nCreated by Madison Glenn",
+    color = "Issued NWPs: Permit Number"
+  ) +
+  theme_minimal()+
+  theme(
+    plot.title = element_text(
+      size = 14,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    plot.subtitle = element_text(
+      size = 8,
+      hjust = 0.5
+    ),
+    
+    legend.position = "right",
+    legend.text = element_text(size = 5),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.2, "cm"),
+    legend.spacing.x = unit(0.1, "cm"),
+    legend.spacing.y = unit(0.01, "cm"),
+    
+    guides(
+      color = guide_legend(
+        ncol = 2,
+        bycol = TRUE,
+        override.aes = list(size = 2)
+      )
+  )
+)
+```
+#Create leaflet map of NWP permit types  (MG)
+
+```{r leaflet method_MG, error=F, warning=F}
+# Convert both layers to WGS84
+NC_proj_NWP <- st_transform(NC_proj_NWP, 4326)
+NC_HUC8 <- st_transform(NC_HUC8, 4326)
+
+# Create palette
+pal <- colorFactor(
+  palette = "Set3",
+  domain = NC_proj_NWP$pnn
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
+    weight = 1
+  ) %>%
+
+  addCircleMarkers(
+    data = NC_proj_NWP,
+    color = ~pal(pnn),
+    radius = 1,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    popup = ~paste(
+      "<b>pnn:</b>", pnn,
+      "<br><b>DA Number:</b>", da_number,
+      "<br><b>Fiscal Year:</b>", fiscal_year
+    )
+  ) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = NC_proj_NWP$pnn,
+    title = "Project Number"
+  )
+```
+
 
 ## Plot permit authorized fill acres by point locations overlapping HUC8 boundaries
 
@@ -568,8 +672,8 @@ leaflet() %>%
     weight = 1,
     group = "Mitigation Required Acres"
   ) %>%
-
-  addLayersControl(
+ 
+   addLayersControl(
     overlayGroups = c(
       "HUC8 Boundaries",
       "Authorized Fill Acres",
