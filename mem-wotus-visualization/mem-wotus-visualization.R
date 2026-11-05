@@ -4,6 +4,8 @@ library(tidyverse)
 library(gt)
 library(sf)
 library(dplyr)
+library(terra)
+library(here)
 
 # =====================================================
 # DATA PREPARATION
@@ -58,18 +60,19 @@ NC_proj <- NC_post2021 %>%
     crs = 4269
   )
 
-# NOTE: found under repository "Data" folder
-NC_county <- vect("Data/NC_County_Boundary/County_Boundary.shp")
-NC_county <- project(NC_county, crs(NC_waters))
-NC_county <- st_as_sf(NC_county)
+# Load county and HUC8 boundaries from repository Data folder
+# Transform to WGS84 (EPSG:4326) for Leaflet
+NC_county <- vect(
+  here("Data", "NC_County_Boundary", "County_Boundary.shp")) %>%
+  st_as_sf() %>%
+  st_transform(4326)
 
-NC_HUC8 <- vect("Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
-NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
-NC_HUC8 <- st_as_sf(NC_HUC8)
+NC_HUC8 <- vect(
+  here("Data", "NC_HUC_8_Boundary", "NC_HUC_8.shp")) %>%
+  st_as_sf() %>%
+  st_transform(4326)
 
-# Convert both layers to WGS84
 NC_proj <- st_transform(NC_proj, 4326)
-NC_HUC8 <- st_transform(NC_HUC8, 4326)
 
 # -------------------------
 # TAB 1: Watershed Summary
@@ -260,7 +263,7 @@ server <- function(input, output) {
   output$watershed_map <- renderLeaflet({
     
     leaflet(NC_HUC8_map) %>%
-      addProviderTiles(providers$CartoDB.Positron) %>%
+      addTiles() %>%
       
       addPolygons(
         fillColor = ~pal_huc8(n_projects),
@@ -297,7 +300,7 @@ server <- function(input, output) {
   output$impact_map <- renderLeaflet({
     
     leaflet() %>%
-      addProviderTiles(providers$CartoDB.Positron) %>%
+      addProviderTiles(providers$OpenStreetMap) %>%
       
       addPolygons(
         data = NC_HUC8,
@@ -599,7 +602,7 @@ server <- function(input, output) {
     leaflet(data = NC_proj) %>%
       
       addProviderTiles(
-        providers$CartoDB.Positron
+        providers$OpenStreetMap
       ) %>%
       
       addPolygons(
