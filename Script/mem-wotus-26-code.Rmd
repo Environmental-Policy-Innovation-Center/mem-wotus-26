@@ -299,12 +299,34 @@ ggplot() +
     color = "Action Type"
   ) +
   theme_minimal()
+
+# Plotting project location by NC_waters
+ggplot() +
+  geom_sf(
+    data = NC_HUC8,
+    fill = "blue",
+    color = "white",
+    alpha = 0.75,
+    show.legend = FALSE
+  ) +
+  geom_sf(
+    data = NC_waters,
+    aes(color = action_type),
+    size = 0.5
+  ) +
+  labs(
+    title = "CWA Section 404 Project Locations by Action Type in North Carolina from the Last RIA Period (1/4/2021-9/30/2025)",
+    subtitle = "Created by Madison Glenn",
+    color = "Action Type"
+  ) +
+  theme_minimal()
 ```
 
 ```{r leaflet method, error=F, warning=F}
 # Convert both layers to WGS84
 NC_proj <- st_transform(NC_proj, 4326)
 NC_HUC8 <- st_transform(NC_HUC8, 4326)
+NC_waters <- st_transform(NC_waters, 4326)
 
 # Create palette
 pal <- colorFactor(
@@ -312,6 +334,7 @@ pal <- colorFactor(
   domain = NC_proj$action_type
 )
 
+#Create leaflet map of projects by issued permit location
 leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
 
@@ -342,14 +365,51 @@ leaflet() %>%
     values = NC_proj$action_type,
     title = "Action Type"
   )
+
+#Create leaflet map of projects by NC_waters locations
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
+    weight = 1
+  ) %>%
+
+  addCircleMarkers(
+    data = NC_waters,
+    color = ~pal(action_type),
+    radius = 1,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    popup = ~paste(
+      "<b>Action Type:</b>", action_type,
+      "<br><b>DA Number:</b>", da_number,
+      "<br><b>Fiscal Year:</b>", fiscal_year
+    )
+  ) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = NC_waters$action_type,
+    title = "Action Type"
+  )
 ```
 
 ##Plot NWP permit points by location, showing permit number (MG) 
 
 ```{r ggplot method_MG, error=F, warning=F}
-NC_proj_NWP <- NC_proj %>%  #Drop GP permits to only include NWPs
+#Drop GP permits to only include NWPs
+NC_proj_NWP <- NC_proj %>%  
   filter(grepl("NWP", pnn))
 
+NC_waters_NWP <- NC_waters %>% 
+  filter(grepl("NWP", pnn))
+
+#Plot by project permit location
 ggplot() +
   geom_sf(
     data = NC_HUC8,
@@ -396,20 +456,70 @@ ggplot() +
       )
   )
 )
+
+#Plot by NC_waters location
+ggplot() +
+  geom_sf(
+    data = NC_HUC8,
+    fill = "tan",
+    color = "white",
+    alpha = 0.75,
+    show.legend = FALSE
+  ) +
+  geom_sf(
+    data = NC_waters_NWP,
+    aes(color = pnn),
+    size = 0.5
+  ) +
+  labs(
+    title = "CWA Section 404 NC NWP Waters Locations by Permit #",
+    subtitle = "Last RIA Period (1/4/2021-9/30/2025)\nCreated by Madison Glenn",
+    color = "Issued NWPs: Permit Number"
+  ) +
+  theme_minimal()+
+  theme(
+    plot.title = element_text(
+      size = 14,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    plot.subtitle = element_text(
+      size = 8,
+      hjust = 0.5
+    ),
+    
+    legend.position = "right",
+    legend.text = element_text(size = 5),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.2, "cm"),
+    legend.spacing.x = unit(0.1, "cm"),
+    legend.spacing.y = unit(0.01, "cm"),
+    
+    guides(
+      color = guide_legend(
+        ncol = 2,
+        bycol = TRUE,
+        override.aes = list(size = 2)
+      )
+  )
+)
 ```
 #Create leaflet map of NWP permit types  (MG)
 
 ```{r leaflet method_MG, error=F, warning=F}
-# Convert both layers to WGS84
+# Convert all layers to WGS84
 NC_proj_NWP <- st_transform(NC_proj_NWP, 4326)
 NC_HUC8 <- st_transform(NC_HUC8, 4326)
+NC_waters <- st_transform(NC_waters, 4326)
 
 # Create palette
 pal <- colorFactor(
-  palette = "Set3",
+  palette = "Set1",
   domain = NC_proj_NWP$pnn
 )
 
+#By permit location
 leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
 
@@ -440,26 +550,60 @@ leaflet() %>%
     values = NC_proj_NWP$pnn,
     title = "Project Number"
   )
+
+#By NC_waters location
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+
+  addPolygons(
+    data = NC_HUC8,
+    fillColor = "grey",
+    fillOpacity = 0.1,
+    color = "black",
+    weight = 1
+  ) %>%
+
+  addCircleMarkers(
+    data = NC_waters_NWP,
+    color = ~pal(pnn),
+    radius = 1,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    popup = ~paste(
+      "<b>pnn:</b>", pnn,
+      "<br><b>DA Number:</b>", da_number,
+      "<br><b>Fiscal Year:</b>", fiscal_year
+    )
+  ) %>%
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = NC_waters_NWP$pnn,
+    title = "Project Number"
+  )
 ```
 
 
 ## Plot permit authorized fill acres by point locations overlapping HUC8 boundaries
 
+##DATA CHANGED TO USE COORDINATES OF WATERS
+
 ```{r Point color changes by fill acres, error=F, warning=F}
-## Plot auth_fill_acres by size
-NC_proj_fill <- NC_proj %>%
+## Plot auth_fill_acres by size 
+NC_waters_fill <- NC_waters %>%
   filter(
     !is.na(auth_fill_acres),
     auth_fill_acres > 0
   )
 
 # Convert both layers to WGS84
-NC_proj_fill <- st_transform(NC_proj_fill,4326)
+NC_waters_fill <- st_transform(NC_waters_fill,4326)
 
 # Create palette
 pal <- colorBin(
   palette = "RdYlGn",
-  domain = NC_proj_fill$auth_fill_acres,
+  domain = NC_waters_fill$auth_fill_acres,
   bins = c(
     0,
     0.1,
@@ -488,7 +632,7 @@ leaflet() %>%
   ) %>%
   
   addCircleMarkers(
-    data = NC_proj_fill,
+    data = NC_waters_fill,
     radius = 1,
     fillColor = ~pal(auth_fill_acres),
     fillOpacity = 0.8,
@@ -501,7 +645,7 @@ leaflet() %>%
   addLegend(
     "bottomright",
     pal = pal,
-    values = NC_proj_fill$auth_fill_acres,
+    values = NC_waters_fill$auth_fill_acres,
     title = "Authorized Fill Acres"
   )
 ```
@@ -511,7 +655,7 @@ leaflet() %>%
 ## Plot auth_fill_acres by radius size
 pal2 <- colorBin(
   palette = "viridis",
-  domain = NC_proj_fill$auth_fill_acres,
+  domain = NC_waters_fill$auth_fill_acres,
    bins = c(
     0,
     0.1,
@@ -540,7 +684,7 @@ leaflet() %>%
   ) %>%
 
   addCircleMarkers(
-    data = NC_proj_fill,
+    data = NC_waters_fill,
 
     # Size represents acreage
     radius = ~pmax(2, sqrt(auth_fill_acres)),
@@ -562,7 +706,7 @@ leaflet() %>%
 addLegend(
   position = "bottomright",
   pal = pal2,
-  values = NC_proj_fill$auth_fill_acres,
+  values = NC_waters_fill$auth_fill_acres,
   title = "Authorized Fill Acres"
 )
 ```
@@ -574,6 +718,7 @@ acre_bins <- c(
   5, 10, 25, 50, 100, 200, Inf
 )
 
+#Acreage changed to those associated with NC_waters points
 all_acres <- c(
   NC_proj$auth_fill_acres,
   NC_proj$auth_struc_acres,
@@ -609,7 +754,7 @@ leaflet() %>%
 
   # Authorized Fill Acres
   addCircleMarkers(
-    data = NC_proj %>% filter(!is.na(auth_fill_acres), auth_fill_acres > 0),
+    data = NC_waters %>% filter(!is.na(auth_fill_acres), auth_fill_acres > 0),
     radius = ~pmax(2, sqrt(auth_fill_acres)),
     fillColor = ~pal(auth_fill_acres),
     color = ~pal(auth_fill_acres),
@@ -624,7 +769,7 @@ leaflet() %>%
 
   # Authorized Structure Acres
   addCircleMarkers(
-    data = NC_proj %>% filter(!is.na(auth_struc_acres), auth_struc_acres > 0),
+    data = NC_waters %>% filter(!is.na(auth_struc_acres), auth_struc_acres > 0),
     radius = ~pmax(2, sqrt(auth_struc_acres)),
     fillColor = ~pal(auth_struc_acres),
     color = ~pal(auth_struc_acres),
@@ -639,7 +784,7 @@ leaflet() %>%
 
   # Authorized Dredge Fill Acres
   addCircleMarkers(
-    data = NC_proj %>% filter(!is.na(auth_drg_fill_acres),
+    data = NC_waters %>% filter(!is.na(auth_drg_fill_acres),
                               auth_drg_fill_acres > 0),
     radius = ~pmax(2, sqrt(auth_drg_fill_acres)),
     fillColor = ~pal(auth_drg_fill_acres),
@@ -651,7 +796,7 @@ leaflet() %>%
 
   # Authorized Dredge Removal Acres
   addCircleMarkers(
-    data = NC_proj %>% filter(!is.na(auth_drg_remvl_acres),
+    data = NC_waters %>% filter(!is.na(auth_drg_remvl_acres),
                               auth_drg_remvl_acres > 0),
     radius = ~pmax(2, sqrt(auth_drg_remvl_acres)),
     fillColor = ~pal(auth_drg_remvl_acres),
@@ -663,7 +808,7 @@ leaflet() %>%
 
   # Mitigation Required Acres
   addCircleMarkers(
-    data = NC_proj %>% filter(!is.na(mit_req_acres),
+    data = NC_waters %>% filter(!is.na(mit_req_acres),
                               mit_req_acres > 0),
     radius = ~pmax(2, sqrt(mit_req_acres)),
     fillColor = ~pal(mit_req_acres),
