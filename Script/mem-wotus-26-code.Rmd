@@ -32,6 +32,13 @@ clean_orm_Wilmington <- read.csv("clean1625_Wilmington.csv")
 # Filter for last RIA period (2021-2025) to reflect updates from ORM SOP 2021
 NC_post_2021 <- clean_orm_Wilmington %>%
   filter(fiscal_year %in% c(2021, 2022, 2023, 2024, 2025))
+
+#Remove Section 10-only permits from data set
+NC_post_2021 <- NC_post_2021 |>
+  filter(grepl("Section 103|Section 404|Section 10/404|Section 10/103|Section 10/404/103", permit_authority))
+
+#Creating a new data frame filtered for PERMANENT IMPACTS only (). Gives us the option to see all projects using the NC_post_2021 df or just perm. impact projects using the NC_perm_post_2021 df.Could remove NC_post_2021 eventually but want to meet first
+
 ```
 
 ## Check id types and counts to determine best for analysis
@@ -140,7 +147,7 @@ date_counts
 # Choose to use the end_date column for consistency due to complete data for all five years
 ```
 
-## May want to filter if only interested in 404 permits
+## May want to filter if only interested in 404 permits | Currently only filtered out Section 10
 
 Clean Water Act permit authority used in permit verification/issuance, for example: "Section 404", "Section 10/404", "Section 10", "Section 103", "Section 10/404/103" [combination of permits], "Section 10/103" [combination of permits], "Section 9", "Section 404/103" [combination of permits]  
 ```{r Permit Authority Count, error = F, warning = F}
@@ -171,6 +178,7 @@ Permit Actions: "How many permits required permittee mitigation?"
 
 - If you want to know *unique # of projects* (many projects like pipelines have multiple permits/action_id's), count unique action_folder_id or da_number where "mitigation_permittee_rsp" = "All" OR "Some". 
 Projects: "How many distinct development/infrastructure projects required permittee mitigation?"
+
 ```{r Responsible mitigation permittee count, error = F, warning = F}
 mitigation_fy <- NC_post_2021 %>%
   filter(mitigation_permittee_rsp %in% c("All", "Some")) %>%
@@ -273,6 +281,40 @@ NC_HUC8 <- vect("D:/MP_Files/mem-wotus-26/Data/NC_HUC_8_Boundary/NC_HUC_8.shp")
 NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
 NC_HUC8 <- st_as_sf(NC_HUC8)
 
+```
+
+```{r Data cleaning p. 2, error=F, warning=F}
+#Check number of unique impact_type and what they are. To be used for renaming
+unique(NC_post_2021$impact_type)
+
+NC_post_2021 |>
+count(impact_type, sort = TRUE)
+
+#Shorten impact_type response names (keeps original data, only adjust how it's displayed)
+NC_post_2021 <- NC_post_2021 |>
+  mutate(impact_type_display = case_when(
+    impact_type == "Conversion of waters type (forested wetland to emergent wetland, stream to lake)" ~ "Conversion of waters type", 
+     impact_type == "Dredging (Section 10)" ~ "Dredging",
+     impact_type == "Excavation associated with the discharge of dredged or fill material" ~ "Excavation",
+     impact_type == "Other (Aquaculture, Work, Aerial or Submarine cable crossings)" ~ "Other",
+     impact_type == "Removal (Sec 10 structures)" ~ "Structure (to remove)",
+     impact_type == "Structure (Sec 10 only)" ~ "Structure (to build)",
+     impact_type == "Transport of dredged material (Sec 103)" ~ "Dredged material transport",
+     impact_type == "Work (non-fill, Section 10)" ~ "Other",
+     impact_type == "" ~ "Unknown",
+
+    TRUE ~ impact_type #Leaves categories we're not renaming the same (eg. Ecological restoration) 
+  ))
+
+#Checking if renaming worked
+NC_post_2021 |>
+count(impact_type_display, sort = TRUE)
+
+#Adjust display names of variables. Will be overridden by labs()
+#var_label(NC_post_2021) -> list(original name = "new name", etc.) for more than one variable
+library(labelled)
+var_label(NC_post_2021$pnn) <- 
+  "NWP Number"
 ```
 
 # Spatial Analysis
@@ -409,7 +451,7 @@ NC_proj_NWP <- NC_proj %>%
 NC_waters_NWP <- NC_waters %>% 
   filter(grepl("NWP", pnn))
 
-#Plot by project permit location
+#Plot by affected waters (NC_waters) location
 ggplot() +
   geom_sf(
     data = NC_HUC8,
@@ -419,7 +461,7 @@ ggplot() +
     show.legend = FALSE
   ) +
   geom_sf(
-    data = NC_proj_NWP,
+    data = NC_waters_NWP,
     aes(color = pnn),
     size = 0.5
   ) +
@@ -456,102 +498,22 @@ ggplot() +
       )
   )
 )
-
-#Plot by NC_waters location
-ggplot() +
-  geom_sf(
-    data = NC_HUC8,
-    fill = "tan",
-    color = "white",
-    alpha = 0.75,
-    show.legend = FALSE
-  ) +
-  geom_sf(
-    data = NC_waters_NWP,
-    aes(color = pnn),
-    size = 0.5
-  ) +
-  labs(
-    title = "CWA Section 404 NC NWP Waters Locations by Permit #",
-    subtitle = "Last RIA Period (1/4/2021-9/30/2025)\nCreated by Madison Glenn",
-    color = "Issued NWPs: Permit Number"
-  ) +
-  theme_minimal()+
-  theme(
-    plot.title = element_text(
-      size = 14,
-      face = "bold",
-      hjust = 0.5
-    ),
-    
-    plot.subtitle = element_text(
-      size = 8,
-      hjust = 0.5
-    ),
-    
-    legend.position = "right",
-    legend.text = element_text(size = 5),
-    legend.title = element_text(size = 6),
-    legend.key.size = unit(0.2, "cm"),
-    legend.spacing.x = unit(0.1, "cm"),
-    legend.spacing.y = unit(0.01, "cm"),
-    
-    guides(
-      color = guide_legend(
-        ncol = 2,
-        bycol = TRUE,
-        override.aes = list(size = 2)
-      )
-  )
-)
 ```
 #Create leaflet map of NWP permit types  (MG)
 
 ```{r leaflet method_MG, error=F, warning=F}
 # Convert all layers to WGS84
-NC_proj_NWP <- st_transform(NC_proj_NWP, 4326)
+NC_proj_NWP <- st_transform(NC_waters_NWP, 4326)
 NC_HUC8 <- st_transform(NC_HUC8, 4326)
 NC_waters <- st_transform(NC_waters, 4326)
 
 # Create palette
 pal <- colorFactor(
   palette = "Set1",
-  domain = NC_proj_NWP$pnn
+  domain = NC_waters_NWP$pnn
 )
 
 #By permit location
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
-
-  addPolygons(
-    data = NC_HUC8,
-    fillColor = "grey",
-    fillOpacity = 0.1,
-    color = "black",
-    weight = 1
-  ) %>%
-
-  addCircleMarkers(
-    data = NC_proj_NWP,
-    color = ~pal(pnn),
-    radius = 1,
-    stroke = FALSE,
-    fillOpacity = 0.5,
-    popup = ~paste(
-      "<b>pnn:</b>", pnn,
-      "<br><b>DA Number:</b>", da_number,
-      "<br><b>Fiscal Year:</b>", fiscal_year
-    )
-  ) %>%
-
-  addLegend(
-    position = "bottomright",
-    pal = pal,
-    values = NC_proj_NWP$pnn,
-    title = "Project Number"
-  )
-
-#By NC_waters location
 leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
 
