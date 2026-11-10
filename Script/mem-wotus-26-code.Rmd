@@ -282,6 +282,7 @@ NC_HUC8 <- project(NC_HUC8, crs(NC_waters))
 NC_HUC8 <- st_as_sf(NC_HUC8)
 
 ```
+##Copy this into the dashboard in the set up:
 
 ```{r Data cleaning p. 2, error=F, warning=F}
 #Check number of unique impact_type and what they are. To be used for renaming

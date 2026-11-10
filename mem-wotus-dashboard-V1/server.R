@@ -202,7 +202,7 @@ server = function(session, input, output){
     filtered_data() %>%
       st_drop_geometry()},
   options = list(
-    pageLength = 25,
+    pageLength = 10,
     scrollX = TRUE
   ))
   

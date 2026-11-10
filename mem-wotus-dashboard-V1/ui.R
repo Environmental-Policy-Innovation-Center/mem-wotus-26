@@ -30,11 +30,15 @@ library(DT)
 getwd()
 
 # Load CSV file from personal desktop folder into R
-clean_orm_Wilmington <- read.csv("C:/Duke_MEM_MP_2026_2027_CWA_Data_Viz/clean1625_Wilmington.csv")
+clean_orm_Wilmington <- read.csv("D:/MP_Files/clean1625_Wilmington.csv")
 
 # Filter for last wetland permit reporting period (2021-2025) to reflect updates from ORM SOP 2021
 NC_post_2021 <- clean_orm_Wilmington %>%
   filter(fiscal_year %in% c(2021, 2022, 2023, 2024, 2025))
+
+#Remove Section 10-only permits from data set
+NC_post_2021 <- NC_post_2021 |>
+  filter(grepl("Section 103|Section 404|Section 10/404|Section 10/103|Section 10/404/103", permit_authority))
 
 # Filter more columns
 NC_post2021 <- NC_post_2021 %>%
