@@ -27,7 +27,7 @@ library(DT)
 
 # Check working directory
 #setwd()
-getwd()
+#getwd()
 
 # Load CSV file from personal desktop folder into R
 clean_orm_Wilmington <- read.csv("D:/MP_Files/clean1625_Wilmington.csv")
@@ -69,11 +69,11 @@ NC_post2021 <- NC_post_2021 %>%
     resource_type
   )
 
-NC_proj <- NC_post2021 %>%
-  filter(!is.na(proj_longitude),
-         !is.na(proj_latitude)) %>%
+NC_waters <- NC_post2021 %>%
+  filter(!is.na(waters_longitude),
+         !is.na(waters_latitude)) %>%
   st_as_sf(
-    coords = c("proj_longitude", "proj_latitude"),
+    coords = c("waters_longitude", "waters_latitude"),
     crs = 4269)
 
 # Load county and HUC8 boundaries from repository Data folder
@@ -88,7 +88,13 @@ NC_HUC8 <- vect(
   st_as_sf() %>%
   st_transform(4326)
 
-NC_proj <- st_transform(NC_proj, 4326)
+NC_waters <- st_transform(NC_waters, 4326)
+
+#Adjust display names of variables. Will be overridden by labs()
+#var_label(NC_post_2021) -> list(original name = "new name", etc.) for more than one variable
+library(labelled)
+var_label(NC_post_2021$pnn) <- 
+  "NWP Number"
 
 # -------------------------
 # Page 1: PERMIT LOCATIONS BY ACTION TYPE
@@ -97,7 +103,7 @@ pal_action <- colorFactor(
   palette = "Set1",
   domain = sort(
     unique(
-      na.omit(NC_proj$action_type))))
+      na.omit(NC_waters$action_type))))
 
 # -------------------------
 # Page 2: PNN Type Map by Watershed
@@ -105,7 +111,7 @@ pal_action <- colorFactor(
 
 # Spatially join projects to watersheds
 permits_huc8 <- st_join(
-  NC_proj,
+  NC_waters,
   NC_HUC8,
   left = FALSE)
 

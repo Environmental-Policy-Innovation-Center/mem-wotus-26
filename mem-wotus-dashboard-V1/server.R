@@ -8,43 +8,62 @@ server = function(session, input, output){
     updateSelectizeInput(
       session,
       "fiscal_year_filter",
-      choices = sort(unique(NC_proj$fiscal_year)),
-      selected = sort(unique(NC_proj$fiscal_year)),
+      choices = sort(unique(NC_waters$fiscal_year)),
+      selected = sort(unique(NC_waters$fiscal_year)),
       server = TRUE)
     
     updateSelectizeInput(
       session,
       "action_type_filter",
-      choices = sort(unique(NC_proj$action_type)),
-      selected = sort(unique(NC_proj$action_type)),
+      choices = sort(unique(NC_waters$action_type)),
+      selected = sort(unique(NC_waters$action_type)),
       server = TRUE)
     
     updateSelectizeInput(
       session,
       "mitigation_filter",
-      choices = sort(unique(NC_proj$compensatory_mitigation_rqd)),
-      selected = sort(unique(NC_proj$compensatory_mitigation_rqd)),
+      choices = sort(unique(NC_waters$compensatory_mitigation_rqd)),
+      selected = sort(unique(NC_waters$compensatory_mitigation_rqd)),
       server = TRUE)
     
     updateSelectizeInput(
       session,
       "authority_filter",
-      choices = sort(unique(NC_proj$permit_authority)),
-      selected = sort(unique(NC_proj$permit_authority)),
+      choices = sort(unique(NC_waters$permit_authority)),
+      selected = sort(unique(NC_waters$permit_authority)),
       server = TRUE)
+    
+   impact_choices <- NC_waters |>
+     distinct(impact_type) |>
+      mutate(display = case_when(
+        impact_type == "Conversion of waters type (forested wetland to emergent wetland, stream to lake)" ~ "Conversion of waters type", 
+        impact_type == "Dredging (Section 10)" ~ "Dredging",
+        impact_type == "Excavation associated with the discharge of dredged or fill material" ~ "Excavation",
+        impact_type == "Other (Aquaculture, Work, Aerial or Submarine cable crossings)" ~ "Other",
+        impact_type == "Removal (Sec 10 structures)" ~ "Structure (to remove)",
+        impact_type == "Structure (Sec 10 only)" ~ "Structure (to build)",
+        impact_type == "Transport of dredged material (Sec 103)" ~ "Dredged material transport",
+        impact_type == "Work (non-fill, Section 10)" ~ "Other",
+        impact_type == "" ~ "Unknown",
+        
+        TRUE ~ impact_type #Leaves categories we're not renaming the same (eg. Ecological restoration) 
+      ))
     
     updateSelectizeInput(
       session,
       "impact_filter",
-      choices = sort(unique(NC_proj$impact_type)),
-      selected = sort(unique(NC_proj$impact_type)),
+      choices = setNames(
+        impact_choices$impact_type, 
+        impact_choices$display
+    ),
+      selected = impact_choices$impact_type,
       server = TRUE)
     
     updateSelectizeInput(
       session,
       "wetland_filter",
-      choices = sort(unique(NC_proj$resource_type)),
-      selected = sort(unique(NC_proj$resource_type)),
+      choices = sort(unique(NC_waters$resource_type)),
+      selected = sort(unique(NC_waters$resource_type)),
       server = TRUE)
   })
   
@@ -52,7 +71,7 @@ server = function(session, input, output){
   # PAGE 1 (Row 1): APPLY FILTER DATA
   # --------------------------------------------------
   filtered_data <- reactive({
-    dat <- NC_proj
+    dat <- NC_waters
     if (!is.null(input$fiscal_year_filter) &&
         length(input$fiscal_year_filter) > 0) {
       dat <- dat %>%
@@ -82,10 +101,8 @@ server = function(session, input, output){
         length(input$wetland_filter) > 0) {
       dat <- dat %>%
         filter(resource_type %in% input$wetland_filter)}
-
-    dat
     
-  })
+      })
   
   # --------------------------------------------------
   # PAGE 1 (Row 2): COUNT VALUE BOXES
@@ -422,7 +439,7 @@ impact_data <- reactive({
   
   req(input$impact_metric)
   
-  NC_proj %>%
+  NC_waters %>%
     
     filter(
       !is.na(.data[[input$impact_metric]]),

@@ -291,7 +291,7 @@ unique(NC_post_2021$impact_type)
 NC_post_2021 |>
 count(impact_type, sort = TRUE)
 
-#Shorten impact_type response names (keeps original data, only adjust how it's displayed)
+#Shorten impact_type response names (keeps original data, only adjusts how it's displayed)
 NC_post_2021 <- NC_post_2021 |>
   mutate(impact_type_display = case_when(
     impact_type == "Conversion of waters type (forested wetland to emergent wetland, stream to lake)" ~ "Conversion of waters type", 
